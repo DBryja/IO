@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Zarządzania Wydarzeniami - CQRS Demo</title>
+    <link rel="stylesheet" href="static/css/styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-calendar-alt"></i> System Zarządzania Wydarzeniami</h1>
+                <p class="subtitle">Architektura CQRS - Demonstracja</p>
+                <div class="organizer-info">
+                    <i class="fas fa-user"></i>
+                    <span>Organizator: <span id="organizer-name">Loading...</span></span>
+                    <button id="change-organizer" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Zmień organizatora
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="create">
+                <i class="fas fa-plus"></i> Utwórz wydarzenie
+            </button>
+            <button class="nav-tab" data-tab="manage">
+                <i class="fas fa-cog"></i> Panel zarządzania
+            </button>
+            <button class="nav-tab" data-tab="catalog">
+                <i class="fas fa-globe"></i> Katalog publiczny
+            </button>
+            <button class="nav-tab" data-tab="stats">
+                <i class="fas fa-chart-bar"></i> Statystyki
+            </button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Create Event Tab -->
+            <section id="create-tab" class="tab-content active">
+                <div class="card">
+                    <h2><i class="fas fa-plus-circle"></i> Tworzenie nowego wydarzenia</h2>
+                    <form id="create-event-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="event-name">Nazwa wydarzenia *</label>
+                                <input type="text" id="event-name" required 
+                                       placeholder="np. Konferencja IT 2025">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="event-description">Opis wydarzenia *</label>
+                            <textarea id="event-description" rows="4" required
+                                    placeholder="Opisz szczegóły wydarzenia..."></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="start-date">Data i godzina rozpoczęcia *</label>
+                                <input type="datetime-local" id="start-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="end-date">Data i godzina zakończenia *</label>
+                                <input type="datetime-local" id="end-date" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Lokalizacja</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="location-type" value="offline" checked>
+                                        <span>Stacjonarnie</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="location-type" value="online">
+                                        <span>Online</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="address-group">
+                            <label for="event-address">Adres</label>
+                            <input type="text" id="event-address" 
+                                   placeholder="np. ul. Technologiczna 1, Warszawa">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="event-type">Typ wydarzenia</label>
+                                <select id="event-type">
+                                    <option value="public">Publiczne</option>
+                                    <option value="private">Prywatne</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="ticket-type">Typ biletów</label>
+                                <select id="ticket-type">
+                                    <option value="free">Bezpłatne</option>
+                                    <option value="paid">Płatne</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row" id="price-group" style="display: none;">
+                            <div class="form-group">
+                                <label for="ticket-price">Cena biletu</label>
+                                <div class="price-input">
+                                    <input type="number" id="ticket-price" min="0" step="0.01" 
+                                           placeholder="0.00">
+                                    <select id="currency">
+                                        <option value="PLN">PLN</option>
+                                        <option value="USD">USD</option>
+                                        <option value="EUR">EUR</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Utwórz wydarzenie
+                            </button>
+                            <button type="reset" class="btn btn-secondary">
+                                <i class="fas fa-undo"></i> Wyczyść formularz
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Management Tab -->
+            <section id="manage-tab" class="tab-content">
+                <div class="card">
+                    <h2><i class="fas fa-cog"></i> Panel zarządzania organizatora</h2>
+                    <div class="actions-bar">
+                        <button id="refresh-events" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Odśwież
+                        </button>
+                    </div>
+                    <div id="organizer-events" class="events-grid">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i> Ładowanie wydarzeń...
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Public Catalog Tab -->
+            <section id="catalog-tab" class="tab-content">
+                <div class="card">
+                    <h2><i class="fas fa-globe"></i> Katalog publicznych wydarzeń</h2>
+                    <div class="actions-bar">
+                        <button id="refresh-catalog" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Odśwież
+                        </button>
+                    </div>
+                    <div id="public-events" class="events-grid">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i> Ładowanie wydarzeń...
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics Tab -->
+            <section id="stats-tab" class="tab-content">
+                <div class="card">
+                    <h2><i class="fas fa-chart-bar"></i> Statystyki systemu</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="total-events">0</h3>
+                                <p>Łączna liczba wydarzeń</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-globe"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="published-events">0</h3>
+                                <p>Opublikowane wydarzenia</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-edit"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="draft-events">0</h3>
+                                <p>Szkice wydarzeń</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="actions-bar">
+                        <button id="refresh-stats" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Odśwież statystyki
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Success/Error Messages -->
+        <div id="message-container"></div>
+    </div>
+
+    <!-- Edit Event Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Edycja wydarzenia</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-event-form">
+                    <!-- Form fields will be dynamically populated -->
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>
