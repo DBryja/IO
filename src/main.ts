@@ -1,4 +1,4 @@
-import { SQLiteEventManagementService } from './sqlite-event-management.service';
+import { EventManagementService } from './event-management.service';
 import { EventType, TicketType, OrganizerId } from './domain/value-objects';
 
 // Demo aplikacji z SQLite CQRS
@@ -8,7 +8,7 @@ async function runSQLiteDemo() {
   console.log('🗄️ Bazy danych: SQLite (Write Model + Read Model)');
   console.log('=' .repeat(70));
 
-  const eventService = new SQLiteEventManagementService();
+  const eventService = new EventManagementService();
   
   try {
     // Pokazanie statystyk baz danych

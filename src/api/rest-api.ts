@@ -1,16 +1,8 @@
-import { Container } from '../infrastructure/cqrs';
 import { EventManagementService } from '../event-management.service';
-import { 
-  GetEventByIdQuery, 
-  GetEventsByOrganizerQuery, 
-  GetPublishedEventsQuery 
-} from '../application/queries';
-import { QueryResult } from '../application/query-handlers';
 import { EventType, TicketType } from '../domain/value-objects';
 
 // Initialize CQRS system
-const container = new Container();
-const eventService = new EventManagementService(container);
+const eventService = new EventManagementService();
 
 // Helper function to parse JSON body
 async function parseBody(request: Request): Promise<any> {
@@ -34,7 +26,7 @@ function jsonResponse(data: any, status = 200): Response {
   });
 }
 
-// Router function
+// Router function for SQLite-based API
 export async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const method = request.method;
@@ -53,164 +45,183 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
 
   try {
-    // Health check
-    if (pathname === '/health' && method === 'GET') {
-      return jsonResponse({ status: 'OK', timestamp: new Date().toISOString() });
-    }
-
-    // Get all published events (public catalog)
-    if (pathname === '/api/events/published' && method === 'GET') {
-      const events = await eventService.getPublishedEvents();
-      return jsonResponse({ 
-        success: true, 
-        data: events,
-        count: events.length 
-      });
-    }
-
-    // Get events by organizer
-    if (pathname.startsWith('/api/events/organizer/') && method === 'GET') {
-      const organizerId = pathname.split('/').pop();
-      if (!organizerId) {
-        return jsonResponse({ success: false, error: 'Organizer ID is required' }, 400);
-      }
-      
-      const events = await eventService.getOrganizerEvents(organizerId);
-      return jsonResponse({ 
-        success: true, 
-        data: events,
-        count: events.length 
-      });
-    }
-
-    // Get event by ID
-    if (pathname.startsWith('/api/events/') && !pathname.includes('/publish') && !pathname.includes('/organizer/') && method === 'GET') {
-      const eventId = pathname.split('/').pop();
-      if (!eventId) {
-        return jsonResponse({ success: false, error: 'Event ID is required' }, 400);
-      }
-        const command = new GetEventByIdQuery(eventId);
-      const result = await container.getQueryBus().execute<GetEventByIdQuery, QueryResult<any>>(command);
-      
-      if (result.success) {
-        return jsonResponse({ 
-          success: true, 
-          data: result.data 
-        });
-      } else {
-        return jsonResponse({ 
-          success: false, 
-          error: result.error 
-        }, 404);
-      }
-    }
-
-    // Create new event
-    if (pathname === '/api/events' && method === 'POST') {
+    // Routes
+    if (pathname === '/api/events' && method === 'POST') {      // Create new event
       const body = await parseBody(request);
-      
       if (!body) {
         return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400);
       }
 
-      // Validation
-      if (!body.organizerId || !body.name || !body.description || !body.startDate || !body.endDate) {
-        return jsonResponse({ 
-          success: false, 
-          error: 'Missing required fields: organizerId, name, description, startDate, endDate' 
-        }, 400);
+      const { organizerId, name, description, startDate, endDate, address, isOnline, eventType, ticketType, ticketPrice, currency } = body;      if (!organizerId || !name || !description || !startDate || !endDate) {
+        return jsonResponse({ success: false, error: 'Missing required fields' }, 400);
       }
 
       const eventId = await eventService.createEvent({
-        organizerId: body.organizerId,
-        name: body.name,
-        description: body.description,
-        startDate: new Date(body.startDate),
-        endDate: new Date(body.endDate),
-        address: body.address,
-        isOnline: body.isOnline || false,
-        eventType: body.eventType || EventType.PUBLIC,
-        ticketType: body.ticketType || TicketType.FREE,
-        ticketPrice: body.ticketPrice,
-        currency: body.currency || 'PLN'
-      });
-
+        organizerId,
+        name,
+        description,
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        address,
+        isOnline: isOnline || false,
+        eventType: eventType || EventType.PUBLIC,
+        ticketType: ticketType || TicketType.FREE,
+        ticketPrice,
+        currency: currency || 'PLN'
+      });      return jsonResponse({ 
+        success: true,
+        eventId, 
+        message: 'Event created successfully',
+        database: 'SQLite CQRS (Command + Query separation)'
+      }, 201);} else if (pathname === '/api/events/published' && method === 'GET') {
+      // Get published events (from read model)
+      const events = await eventService.getPublishedEvents();
       return jsonResponse({ 
-        success: true, 
-        data: { eventId },
-        message: 'Event created successfully' 
+        success: true,
+        data: events,
+        count: events.length,
+        source: 'Read Model (Query Database)'
       });
-    }
 
-    // Update event
-    if (pathname.startsWith('/api/events/') && !pathname.includes('/publish') && method === 'PUT') {
+    } else if (pathname.startsWith('/api/events/organizer/') && method === 'GET') {
+      // Get events by organizer (from read model)
+      const organizerId = pathname.split('/').pop();
+      if (!organizerId) {
+        return jsonResponse({ error: 'Invalid organizer ID' }, 400);
+      }      const events = await eventService.getOrganizerEvents(organizerId);
+      return jsonResponse({ 
+        success: true,
+        data: events,
+        count: events.length,
+        organizerId,
+        source: 'Read Model (Query Database)'
+      });
+
+    } else if (pathname.startsWith('/api/events/') && method === 'GET') {
+      // Get specific event by ID (from read model)
       const eventId = pathname.split('/').pop();
       if (!eventId) {
-        return jsonResponse({ success: false, error: 'Event ID is required' }, 400);
+        return jsonResponse({ error: 'Invalid event ID' }, 400);
+      }      const event = await eventService.getEventById(eventId);
+      if (!event) {
+        return jsonResponse({ success: false, error: 'Event not found' }, 404);
       }
-      
-      const body = await parseBody(request);
+
+      return jsonResponse({ 
+        success: true,
+        data: event,
+        source: 'Read Model (Query Database)'
+      });    } else if (pathname.startsWith('/api/events/') && pathname.endsWith('/publish') && method === 'POST') {
+      // Publish event
+      const eventId = pathname.split('/')[3]; // /api/events/{id}/publish
+      if (!eventId) {
+        return jsonResponse({ success: false, error: 'Invalid event ID' }, 400);
+      }
+
+      await eventService.publishEvent(eventId);
+      return jsonResponse({ 
+        success: true,
+        message: 'Event published successfully',
+        eventId,
+        action: 'Synchronized to Read Model'
+      });    } else if (pathname.startsWith('/api/events/') && method === 'PUT') {
+      // Update event
+      const eventId = pathname.split('/').pop();
+      if (!eventId) {
+        return jsonResponse({ success: false, error: 'Invalid event ID' }, 400);
+      }      const body = await parseBody(request);
       if (!body) {
         return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400);
       }
-      
-      await eventService.updateEvent(eventId, {
-        name: body.name,
-        description: body.description,
-        startDate: new Date(body.startDate),
-        endDate: new Date(body.endDate),
-        address: body.address,
-        isOnline: body.isOnline || false,
-        eventType: body.eventType || EventType.PUBLIC,
-        ticketType: body.ticketType || TicketType.FREE,
-        ticketPrice: body.ticketPrice,
-        currency: body.currency || 'PLN'
-      });
 
-      return jsonResponse({ 
-        success: true, 
-        message: 'Event updated successfully' 
-      });
-    }
+      const { name, description, startDate, endDate, address, isOnline, eventType, ticketType, ticketPrice, currency } = body;
 
-    // Publish event
-    if (pathname.endsWith('/publish') && method === 'POST') {
-      const eventId = pathname.split('/')[3]; // /api/events/{eventId}/publish
-      if (!eventId) {
-        return jsonResponse({ success: false, error: 'Event ID is required' }, 400);
+      if (!name || !description || !startDate || !endDate) {
+        return jsonResponse({ success: false, error: 'Missing required fields' }, 400);
       }
-      
-      await eventService.publishEvent(eventId);
 
-      return jsonResponse({ 
-        success: true, 
-        message: 'Event published successfully' 
-      });
-    }
-
-    // Statistics endpoint
-    if (pathname === '/api/stats' && method === 'GET') {
-      const totalEvents = container.getEventRepository().getEventCount();
-      const publishedEvents = await eventService.getPublishedEvents();
+      await eventService.updateEvent(eventId, {
+        name,
+        description,
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        address,
+        isOnline: isOnline || false,
+        eventType: eventType || EventType.PUBLIC,
+        ticketType: ticketType || TicketType.FREE,
+        ticketPrice,
+        currency: currency || 'PLN'
+      });      return jsonResponse({ 
+        success: true,
+        message: 'Event updated successfully',
+        eventId,
+        action: 'Synchronized to Read Model'
+      });    } else if (pathname === '/api/stats' && method === 'GET') {
+      // Database statistics - get real data from databases
+      await eventService.showDatabaseStats();
+        // Get actual statistics from the databases
+      const allEvents = await eventService.getAllEvents();
+      const publishedEvents = allEvents.filter((event: any) => event.isPublished);
+      const draftEvents = allEvents.filter((event: any) => !event.isPublished);
       
       return jsonResponse({
         success: true,
         data: {
-          totalEvents,
+          totalEvents: allEvents.length,
           publishedEvents: publishedEvents.length,
-          draftEvents: totalEvents - publishedEvents.length
+          draftEvents: draftEvents.length,
+          message: 'Database statistics retrieved successfully',
+          architecture: 'CQRS with SQLite',
+          databases: {
+            command: 'events_command.db (Write Model)',
+            query: 'events_query.db (Read Model)'
+          },
+          features: [
+            'Automatic synchronization between models',
+            'Optimized read queries',
+            'Transactional write operations',
+            'Dual database separation'
+          ]
         }
       });
+
+    } else if (pathname === '/api/health' && method === 'GET') {
+      // Health check
+      return jsonResponse({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        database: 'SQLite CQRS',
+        version: '2.0.0'
+      });
+
+    } else {
+      // Route not found
+      return jsonResponse({ 
+        error: 'Route not found',
+        availableRoutes: [
+          'POST /api/events - Create event',
+          'GET /api/events/published - Get published events',
+          'GET /api/events/organizer/{id} - Get organizer events',
+          'GET /api/events/{id} - Get event by ID',
+          'POST /api/events/{id}/publish - Publish event',
+          'PUT /api/events/{id} - Update event',
+          'GET /api/stats - Database statistics',
+          'GET /api/health - Health check'
+        ]
+      }, 404);
     }
-
-    // Route not found
-    return jsonResponse({ success: false, error: 'Route not found' }, 404);
-
   } catch (error) {
     console.error('API Error:', error);
     return jsonResponse({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      success: false,
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
+}
+
+// Cleanup function for graceful shutdown
+export function cleanup() {
+  eventService.close();
+  console.log('🔒 API cleanup: Database connections closed');
 }

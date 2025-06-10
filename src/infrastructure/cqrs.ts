@@ -4,11 +4,11 @@ import {
   PublishEventCommandHandler 
 } from '../application/command-handlers';
 import { 
-  GetEventByIdQueryHandler, 
-  GetEventsByOrganizerQueryHandler, 
-  GetPublishedEventsQueryHandler 
+  SQLiteGetEventByIdQueryHandler, 
+  SQLiteGetEventsByOrganizerQueryHandler, 
+  SQLiteGetPublishedEventsQueryHandler 
 } from '../application/query-handlers';
-import { InMemoryEventRepository } from '../infrastructure/repositories';
+import { EventCommandRepository, EventQueryRepository } from './repositories';
 
 // CQRS Bus Implementation
 export class CommandBus {
@@ -45,30 +45,38 @@ export class QueryBus {
   }
 }
 
-// Dependency Injection Container
+// CQRS Container with dual SQLite databases
 export class Container {
-  private eventRepository: InMemoryEventRepository;
+  private commandRepository: EventCommandRepository;
+  private queryRepository: EventQueryRepository;
   private commandBus: CommandBus;
   private queryBus: QueryBus;
 
   constructor() {
-    this.eventRepository = new InMemoryEventRepository();
+    // Separate databases for Commands (write) and Queries (read)
+    this.commandRepository = new EventCommandRepository('events_command.db');
+    this.queryRepository = new EventQueryRepository('events_query.db');
+    
     this.commandBus = new CommandBus();
     this.queryBus = new QueryBus();
     
     this.setupHandlers();
+    
+    console.log('🗄️ SQLite CQRS Container initialized with dual databases:');
+    console.log('   📝 Command DB: events_command.db (Write operations)');
+    console.log('   📖 Query DB: events_query.db (Read operations)');
   }
 
   private setupHandlers(): void {
-    // Register command handlers
-    this.commandBus.register('CREATE_EVENT', new CreateEventCommandHandler(this.eventRepository));
-    this.commandBus.register('UPDATE_EVENT', new UpdateEventCommandHandler(this.eventRepository));
-    this.commandBus.register('PUBLISH_EVENT', new PublishEventCommandHandler(this.eventRepository));
+    // Register command handlers - they use the command repository (write model)
+    this.commandBus.register('CREATE_EVENT', new CreateEventCommandHandler(this.commandRepository));
+    this.commandBus.register('UPDATE_EVENT', new UpdateEventCommandHandler(this.commandRepository));
+    this.commandBus.register('PUBLISH_EVENT', new PublishEventCommandHandler(this.commandRepository));
 
-    // Register query handlers
-    this.queryBus.register('GET_EVENT_BY_ID', new GetEventByIdQueryHandler(this.eventRepository));
-    this.queryBus.register('GET_EVENTS_BY_ORGANIZER', new GetEventsByOrganizerQueryHandler(this.eventRepository));
-    this.queryBus.register('GET_PUBLISHED_EVENTS', new GetPublishedEventsQueryHandler(this.eventRepository));
+    // Register query handlers - they use the query repository (read model)
+    this.queryBus.register('GET_EVENT_BY_ID', new SQLiteGetEventByIdQueryHandler(this.queryRepository));
+    this.queryBus.register('GET_EVENTS_BY_ORGANIZER', new SQLiteGetEventsByOrganizerQueryHandler(this.queryRepository));
+    this.queryBus.register('GET_PUBLISHED_EVENTS', new SQLiteGetPublishedEventsQueryHandler(this.queryRepository));
   }
 
   getCommandBus(): CommandBus {
@@ -77,9 +85,20 @@ export class Container {
 
   getQueryBus(): QueryBus {
     return this.queryBus;
+  }  getCommandRepository(): EventCommandRepository {
+    return this.commandRepository;
   }
 
-  getEventRepository(): InMemoryEventRepository {
-    return this.eventRepository;
+  getQueryRepository(): EventQueryRepository {
+    return this.queryRepository;
+  }
+
+  // Cleanup method to close database connections
+  close(): void {
+    this.commandRepository.close();
+    this.queryRepository.close();
+    console.log('🔒 Database connections closed');
   }
 }
+
+// SQLite CQRS Container is now the default implementation
