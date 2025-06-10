@@ -5,9 +5,14 @@
   "main": "src/main.ts",
   "scripts": {
     "dev": "bun run --watch src/server.ts",
+    "dev:sqlite": "bun run --watch src/sqlite-server.ts",
     "build": "bun build src/server.ts --outdir ./dist",
+    "build:sqlite": "bun build src/sqlite-server.ts --outdir ./dist",
     "start": "bun run src/server.ts",
-    "demo": "bun run src/main.ts"
+    "start:sqlite": "bun run src/sqlite-server.ts",
+    "demo": "bun run src/main.ts",
+    "demo:sqlite": "bun run src/sqlite-main.ts",
+    "clean": "rm -f *.db"
   },
   "dependencies": {
     "uuid": "^9.0.0"
