@@ -199,24 +199,24 @@ export class EventManagementService {
 
   // Utility method to show database statistics
   async showDatabaseStats(): Promise<void> {
-    console.log('\n=== STATYSTYKI BAZ DANYCH ===');
+    // console.log('\n=== STATYSTYKI BAZ DANYCH ===');
     try {
-      // Get stats from command repository
-      const commandRepo = this.container.getCommandRepository();
-      const queryRepo = this.container.getQueryRepository();
+      // // Get stats from command repository
+      // const commandRepo = this.container.getCommandRepository();
+      // const queryRepo = this.container.getQueryRepository();
       
-      console.log('📝 Command Database (Write Model):');
-      console.log('   - Optymalizowana dla operacji zapisu');
-      console.log('   - Gwarantuje spójność transakcyjną');
+      // console.log('📝 Command Database (Write Model):');
+      // console.log('   - Optymalizowana dla operacji zapisu');
+      // console.log('   - Gwarantuje spójność transakcyjną');
       
-      console.log('📖 Query Database (Read Model):');
-      console.log('   - Zoptymalizowana dla szybkich zapytań');
-      console.log('   - Denormalizowana struktura danych');
-      console.log('   - Indeksy na często używanych polach');
+      // console.log('📖 Query Database (Read Model):');
+      // console.log('   - Zoptymalizowana dla szybkich zapytań');
+      // console.log('   - Denormalizowana struktura danych');
+      // console.log('   - Indeksy na często używanych polach');
       
-      console.log('🔄 Synchronizacja:');
-      console.log('   - Automatyczna po każdej operacji zapisu');
-      console.log('   - W produkcji: asynchroniczna przez zdarzenia domenowe');
+      // console.log('🔄 Synchronizacja:');
+      // console.log('   - Automatyczna po każdej operacji zapisu');
+      // console.log('   - W produkcji: asynchroniczna przez zdarzenia domenowe');
     } catch (error) {
       console.error('❌ Błąd podczas pobierania statystyk:', error);
     }

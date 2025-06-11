@@ -9,6 +9,7 @@ import {
   SQLiteGetPublishedEventsQueryHandler 
 } from '../application/query-handlers';
 import { EventCommandRepository, EventQueryRepository } from './repositories';
+import { InMemoryDomainEventPublisher } from '../domain/domain-events';
 
 // CQRS Bus Implementation
 export class CommandBus {
@@ -51,10 +52,14 @@ export class Container {
   private queryRepository: EventQueryRepository;
   private commandBus: CommandBus;
   private queryBus: QueryBus;
+  private eventPublisher: InMemoryDomainEventPublisher;
 
   constructor() {
+    // Initialize the domain event publisher
+    this.eventPublisher = new InMemoryDomainEventPublisher();
+    
     // Separate databases for Commands (write) and Queries (read)
-    this.commandRepository = new EventCommandRepository('events_command.db');
+    this.commandRepository = new EventCommandRepository('events_command.db', this.eventPublisher);
     this.queryRepository = new EventQueryRepository('events_query.db');
     
     this.commandBus = new CommandBus();
@@ -63,15 +68,15 @@ export class Container {
     this.setupHandlers();
     
     console.log('🗄️ SQLite CQRS Container initialized with dual databases:');
-    console.log('   📝 Command DB: events_command.db (Write operations)');
-    console.log('   📖 Query DB: events_query.db (Read operations)');
+    console.log('📝 Command DB: events_command.db (Write operations)');
+    console.log('📖 Query DB: events_query.db (Read operations)');
+    console.log('📡 Event Publisher: Domain events for CQRS synchronization');
   }
-
   private setupHandlers(): void {
     // Register command handlers - they use the command repository (write model)
     this.commandBus.register('CREATE_EVENT', new CreateEventCommandHandler(this.commandRepository));
     this.commandBus.register('UPDATE_EVENT', new UpdateEventCommandHandler(this.commandRepository));
-    this.commandBus.register('PUBLISH_EVENT', new PublishEventCommandHandler(this.commandRepository));
+    this.commandBus.register('PUBLISH_EVENT', new PublishEventCommandHandler(this.commandRepository, this.eventPublisher));
 
     // Register query handlers - they use the query repository (read model)
     this.queryBus.register('GET_EVENT_BY_ID', new SQLiteGetEventByIdQueryHandler(this.queryRepository));
@@ -88,9 +93,12 @@ export class Container {
   }  getCommandRepository(): EventCommandRepository {
     return this.commandRepository;
   }
-
   getQueryRepository(): EventQueryRepository {
     return this.queryRepository;
+  }
+
+  getEventPublisher(): InMemoryDomainEventPublisher {
+    return this.eventPublisher;
   }
 
   // Cleanup method to close database connections

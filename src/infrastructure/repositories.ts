@@ -3,6 +3,13 @@ import { IEventRepository } from '../domain/repositories';
 import { Event } from '../domain/event';
 import { EventId, OrganizerId, EventType, TicketType, Money, Location } from '../domain/value-objects';
 import { EventDto } from '../application/queries';
+import { 
+  DomainEvent, 
+  EventCreatedDomainEvent, 
+  EventUpdatedDomainEvent, 
+  DomainEventPublisher,
+  InMemoryDomainEventPublisher 
+} from '../domain/domain-events';
 
 // Database schema interface
 interface EventRow {
@@ -112,14 +119,29 @@ abstract class BaseSQLiteRepository {
 
 // Command Model Repository (Write Side)
 export class EventCommandRepository extends BaseSQLiteRepository implements IEventRepository {
-  constructor(dbPath: string = 'events_command.db') {
+  private eventPublisher: DomainEventPublisher;
+
+  constructor(dbPath: string = 'events_command.db', eventPublisher?: DomainEventPublisher) {
     super(dbPath);
+    this.eventPublisher = eventPublisher || new InMemoryDomainEventPublisher();
+    this.setupEventHandlers();
   }
 
+  private setupEventHandlers(): void {
+    // Subscribe to domain events for read model synchronization
+    this.eventPublisher.subscribe('EventCreated', this.handleEventCreated.bind(this));
+    this.eventPublisher.subscribe('EventUpdated', this.handleEventUpdated.bind(this));
+    this.eventPublisher.subscribe('EventPublished', this.handleEventPublished.bind(this));
+  }
   async save(event: Event): Promise<void> {
     const row = this.eventToRow(event);
     
     try {
+      // Check if event already exists to determine if it's create or update
+      const existingQuery = 'SELECT id FROM events WHERE id = ?';
+      const existing = this.db.query(existingQuery).get(event.id.value);
+      const isUpdate = !!existing;
+      
       // Use upsert pattern with Bun SQLite
       const upsertQuery = `
         INSERT INTO events (
@@ -149,62 +171,140 @@ export class EventCommandRepository extends BaseSQLiteRepository implements IEve
         row.ticket_price_currency, row.is_published
       ]);
 
-      console.log(`Event saved to command DB: ${event.name} (ID: ${event.id.value})`);
+      console.log(`📝 Event saved to command DB: ${event.name} (ID: ${event.id.value})`);
       
-      // Synchronize to read model
-      await this.synchronizeToReadModel(event);
+      // Publish appropriate domain event
+      const eventData = {
+        id: event.id.value,
+        organizerId: event.organizerId.value,
+        name: event.name,
+        description: event.description,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        address: event.location.address,
+        isOnline: event.location.isOnline,
+        eventType: event.eventType,
+        ticketType: event.ticketType,
+        ticketPrice: event.ticketPrice ? {
+          amount: event.ticketPrice.amount,
+          currency: event.ticketPrice.currency
+        } : undefined,
+        isPublished: event.isPublished
+      };
+
+      if (isUpdate) {
+        const domainEvent = new EventUpdatedDomainEvent(eventData, ['name', 'description']); // In real app, track actual changes
+        await this.eventPublisher.publish(domainEvent);
+      } else {
+        const domainEvent = new EventCreatedDomainEvent(eventData);
+        await this.eventPublisher.publish(domainEvent);
+      }
+      
     } catch (error) {
-      console.error('Error saving event to command database:', error);
+      console.error('❌ Error saving event to command database:', error);
       throw error;
     }
   }
 
-  private async synchronizeToReadModel(event: Event): Promise<void> {
-    try {
-      // Open read database for synchronization
-      const readDb = new Database('events_query.db');
-      
-      // Ensure read model schema exists
-      this.initializeReadModelSchema(readDb);
-      
-      const row = this.eventToRow(event);
-      
-      const upsertQuery = `
-        INSERT INTO events (
-          id, organizer_id, name, description, start_date, end_date,
-          address, is_online, event_type, ticket_type, ticket_price_amount,
-          ticket_price_currency, is_published, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          description = excluded.description,
-          start_date = excluded.start_date,
-          end_date = excluded.end_date,
-          address = excluded.address,
-          is_online = excluded.is_online,
-          event_type = excluded.event_type,
-          ticket_type = excluded.ticket_type,
-          ticket_price_amount = excluded.ticket_price_amount,
-          ticket_price_currency = excluded.ticket_price_currency,
-          is_published = excluded.is_published,
-          updated_at = CURRENT_TIMESTAMP
-      `;
-
-      readDb.run(upsertQuery, [
-        row.id, row.organizer_id, row.name, row.description,
-        row.start_date, row.end_date, row.address, row.is_online,
-        row.event_type, row.ticket_type, row.ticket_price_amount,
-        row.ticket_price_currency, row.is_published
-      ]);
-
-      readDb.close();
-      console.log(`Event synchronized to read model: ${event.name}`);
-    } catch (error) {
-      console.error('Error synchronizing to read model:', error);
-      // In production, this would be handled by a retry mechanism
-    }
+  // Domain event handlers for read model synchronization
+  private async handleEventCreated(domainEvent: DomainEvent): Promise<void> {
+    const event = (domainEvent as EventCreatedDomainEvent).event;
+    console.log(`🔄 Handling EventCreated for read model: ${event.name}`);
+    await this.syncEventToReadModel(event, 'create');
   }
 
+  private async handleEventUpdated(domainEvent: DomainEvent): Promise<void> {
+    const event = (domainEvent as EventUpdatedDomainEvent).event;
+    console.log(`🔄 Handling EventUpdated for read model: ${event.name}`);
+    await this.syncEventToReadModel(event, 'update');
+  }
+
+  private async handleEventPublished(domainEvent: DomainEvent): Promise<void> {
+    const publishedEvent = domainEvent as any; // EventPublishedDomainEvent
+    console.log(`🔄 Handling EventPublished for read model: ${publishedEvent.eventName}`);
+    
+    // Update published status in read model
+    const readDb = new Database('events_query.db');
+    this.initializeReadModelSchema(readDb);
+    
+    const updateQuery = 'UPDATE events SET is_published = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+    readDb.run(updateQuery, [publishedEvent.aggregateId]);
+    readDb.close();
+  }
+
+  private async syncEventToReadModel(eventData: any, operation: 'create' | 'update'): Promise<void> {
+    try {
+      const readDb = new Database('events_query.db');
+      this.initializeReadModelSchema(readDb);
+      
+      if (operation === 'create') {
+        const insertQuery = `
+          INSERT INTO events (
+            id, organizer_id, name, description, start_date, end_date,
+            address, is_online, event_type, ticket_type, ticket_price_amount,
+            ticket_price_currency, is_published, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `;
+
+        readDb.run(insertQuery, [
+          eventData.id,
+          eventData.organizerId,
+          eventData.name,
+          eventData.description,
+          eventData.startDate.toISOString(),
+          eventData.endDate.toISOString(),
+          eventData.address || null,
+          eventData.isOnline ? 1 : 0,
+          eventData.eventType,
+          eventData.ticketType,
+          eventData.ticketPrice?.amount || null,
+          eventData.ticketPrice?.currency || null,
+          eventData.isPublished ? 1 : 0
+        ]);
+        console.log(`➕ Event created in read model: ${eventData.name}`);
+      } else {
+        const updateQuery = `
+          UPDATE events SET
+            organizer_id = ?,
+            name = ?,
+            description = ?,
+            start_date = ?,
+            end_date = ?,
+            address = ?,
+            is_online = ?,
+            event_type = ?,
+            ticket_type = ?,
+            ticket_price_amount = ?,
+            ticket_price_currency = ?,
+            is_published = ?,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `;
+
+        readDb.run(updateQuery, [
+          eventData.organizerId,
+          eventData.name,
+          eventData.description,
+          eventData.startDate.toISOString(),
+          eventData.endDate.toISOString(),
+          eventData.address || null,
+          eventData.isOnline ? 1 : 0,
+          eventData.eventType,
+          eventData.ticketType,
+          eventData.ticketPrice?.amount || null,
+          eventData.ticketPrice?.currency || null,
+          eventData.isPublished ? 1 : 0,
+          eventData.id
+        ]);
+        console.log(`📝 Event updated in read model: ${eventData.name}`);
+      }
+
+      readDb.close();
+    } catch (error) {
+      console.error(`❌ Error syncing ${operation} to read model:`, error);
+      throw error;
+    }
+  }  
   private initializeReadModelSchema(db: Database): void {
     const createEventsTable = `
       CREATE TABLE IF NOT EXISTS events (

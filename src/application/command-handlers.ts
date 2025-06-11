@@ -2,6 +2,7 @@ import { CreateEventCommand, UpdateEventCommand, PublishEventCommand } from './c
 import { IEventRepository } from '../domain/repositories';
 import { Event } from '../domain/event';
 import { OrganizerId, EventId, Location, Money } from '../domain/value-objects';
+import { EventPublishedDomainEvent, DomainEventPublisher } from '../domain/domain-events';
 
 // Command Result
 export interface CommandResult {
@@ -104,7 +105,10 @@ export class UpdateEventCommandHandler implements ICommandHandler<UpdateEventCom
 }
 
 export class PublishEventCommandHandler implements ICommandHandler<PublishEventCommand> {
-  constructor(private eventRepository: IEventRepository) {}
+  constructor(
+    private eventRepository: IEventRepository,
+    private eventPublisher?: DomainEventPublisher
+  ) {}
 
   async handle(command: PublishEventCommand): Promise<CommandResult> {
     try {
@@ -120,6 +124,16 @@ export class PublishEventCommandHandler implements ICommandHandler<PublishEventC
 
       event.publish();
       await this.eventRepository.save(event);
+
+      // Publish domain event for published event
+      if (this.eventPublisher) {
+        const publishedEvent = new EventPublishedDomainEvent(
+          event.id.value,
+          event.organizerId.value,
+          event.name
+        );
+        await this.eventPublisher.publish(publishedEvent);
+      }
 
       return {
         success: true,
