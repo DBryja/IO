@@ -52,7 +52,8 @@ export async function handleRequest(request: Request): Promise<Response> {
         return jsonResponse({ success: false, error: 'Invalid JSON body' }, 400);
       }
 
-      const { organizerId, name, description, startDate, endDate, address, isOnline, eventType, ticketType, ticketPrice, currency } = body;      if (!organizerId || !name || !description || !startDate || !endDate) {
+      const { organizerId, name, description, startDate, endDate, address, isOnline, eventType, ticketType, ticketPrice, currency } = body;      
+      if (!organizerId || !name || !description || !startDate || !endDate) {
         return jsonResponse({ success: false, error: 'Missing required fields' }, 400);
       }
 
@@ -68,12 +69,15 @@ export async function handleRequest(request: Request): Promise<Response> {
         ticketType: ticketType || TicketType.FREE,
         ticketPrice,
         currency: currency || 'PLN'
-      });      return jsonResponse({ 
+      });      
+      
+      return jsonResponse({ 
         success: true,
         eventId, 
         message: 'Event created successfully',
         database: 'SQLite CQRS (Command + Query separation)'
-      }, 201);} else if (pathname === '/api/events/published' && method === 'GET') {
+      }, 201);
+    } else if (pathname === '/api/events/published' && method === 'GET') {
       // Get published events (from read model)
       const events = await eventService.getPublishedEvents();
       return jsonResponse({ 

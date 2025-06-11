@@ -1,8 +1,8 @@
-# 🎉 System zarządzania wydarzeniami - Prezentacja projektu
+# 🎉 System zarządzania wydarzeniami - SQLite CQRS
 
-## 📋 Status projektu: GOTOWY DO PREZENTACJI
+## 📋 Status projektu: GOTOWY DO PREZENTACJI ✅
 
-System zarządzania wydarzeniami oparty na architekturze CQRS został pomyślnie zaimplementowany i jest gotowy do demonstracji.
+System zarządzania wydarzeniami z architekturą CQRS opartą na dwóch bazach SQLite został pomyślnie zaimplementowany i jest w pełni funkcjonalny.
 
 ## 🚀 Jak uruchomić
 
@@ -10,45 +10,73 @@ System zarządzania wydarzeniami oparty na architekturze CQRS został pomyślnie
 # Przejdź do katalogu projektu
 cd "d:\szkola\IO"
 
-# Uruchom serwer (już działa!)
-bun run dev
+# Uruchom serwer
+bun run start
 
 # Otwórz w przeglądarce
 # http://localhost:3000
 ```
 
+## 🏗️ Architektura CQRS z SQLite
+
+### Dual Database Implementation
+- **`events_command.db`** - Write Model (Command Side)
+  - Operacje zapisu (CREATE, UPDATE, PUBLISH)
+  - Gwarantuje spójność transakcyjną
+  - Optymalizowane dla komend
+
+- **`events_query.db`** - Read Model (Query Side)  
+  - Operacje odczytu (SELECT, FILTER, SEARCH)
+  - Denormalizowane dla szybkości
+  - Automatyczna synchronizacja z Write Model
+
+### Separacja odpowiedzialności
+- **Commands:** Zmieniają stan w Command DB
+- **Queries:** Czytają z Query DB (zoptymalizowane)
+- **Sync:** Automatyczna po każdej operacji zapisu
+
 ## 🎯 Co można zaprezentować
 
-### 1. **Architektura CQRS w praktyce**
-- **Commands** - operacje zmieniające stan (tworzenie, edycja, publikacja)
-- **Queries** - operacje odczytujące (lista wydarzeń, szczegóły, statystyki)
+### 1. **Architektura CQRS z SQLite w praktyce**
+- **Write Model** - `events_command.db` dla operacji zapisu
+- **Read Model** - `events_query.db` dla zapytań (zoptymalizowane)
 - **Separacja odpowiedzialności** - czytelny kod, łatwa rozszerzalność
+- **Automatyczna synchronizacja** - Write → Read po każdej operacji
 
 ### 2. **Scenariusz główny: Tworzenie wydarzenia** ✅
-- Organizator wypełnia formularz
+- Organizator wypełnia formularz w przeglądarce
 - System waliduje dane biznesowe
-- Wydarzenie jest zapisywane
-- Dostępne w panelu zarządzania
-- Możliwość modyfikacji i publikacji
+- Zapis do Command Database
+- Automatyczna synchronizacja do Query Database
+- Dostępne w panelu zarządzania (Read Model)
 
-### 3. **Walidacja biznesowa**
+### 3. **Dual Database Operations**
+- **Command operations:** CREATE, UPDATE, PUBLISH → `events_command.db`
+- **Query operations:** SELECT, FILTER → `events_query.db`
+- **Real-time sync:** Command changes propagated to Query DB
+- **Performance:** Read queries optimized independently
+
+### 4. **Walidacja biznesowa**
 - Nazwa i opis wymagane
 - Data rozpoczęcia < data zakończenia  
 - Wydarzenia nie mogą być w przeszłości
 - Płatne wydarzenia muszą mieć cenę > 0
 - Bezpłatne wydarzenia nie mogą mieć ceny
 
-### 4. **Funkcjonalności systemu**
+### 5. **Funkcjonalności systemu**
 - **Tworzenie wydarzeń** - pełny formularz z walidacją
 - **Edycja wydarzeń** - modyfikacja wszystkich parametrów
 - **Publikacja** - przełączenie z szkicu na publiczne
-- **Panel organizatora** - lista własnych wydarzeń
-- **Katalog publiczny** - opublikowane wydarzenia
-- **Statystyki** - podsumowanie systemu
+- **Panel organizatora** - lista własnych wydarzeń (Read Model)
+- **Katalog publiczny** - opublikowane wydarzenia (Query DB)
+- **Statystyki** - podsumowanie z obu baz danych
 
-### 5. **Technologie**
-- **Bun** - Runtime i HTTP server
+### 6. **Technologie**
+- **Bun** - Runtime z natywną obsługą SQLite
 - **TypeScript** - Bezpieczeństwo typów
+- **SQLite** - Dual database (Command + Query)
+- **REST API** - Pełny CRUD z CQRS endpoints
+- **Frontend** - Vanilla JS (zero dependencies)
 - **CQRS** - Architektura aplikacji
 - **DDD** - Domain-Driven Design
 - **Vanilla JS** - Frontend bez frameworków

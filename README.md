@@ -1,14 +1,42 @@
-# System do organizacji i zarządzania wydarzeniami - CQRS Prototype
+# System do organizacji i zarządzania wydarzeniami - React + SQLite CQRS
 
 ## Opis projektu
 
-Prototyp systemu do zarządzania wydarzeniami oparty na architekturze CQRS (Command Query Responsibility Segregation). System umożliwia organizatorom tworzenie, modyfikowanie i publikowanie wydarzeń.
+System do zarządzania wydarzeniami oparty na architekturze CQRS (Command Query Responsibility Segregation) z dedykowanymi bazami danych SQLite. Frontend zbudowany w React z TypeScript dla lepszej organizacji kodu i czytelności. System umożliwia organizatorom tworzenie, modyfikowanie i publikowanie wydarzeń z wykorzystaniem wzorca separacji operacji odczytu i zapisu.
 
-## Architektura CQRS
+## Architektura techniczna
 
-Projekt implementuje wzorzec CQRS dzieląc operacje na:
-- **Commands** - operacje zmieniające stan (tworzenie, aktualizacja, publikacja wydarzeń)
-- **Queries** - operacje odczytujące dane (pobieranie wydarzeń, listy organizatora)
+### Frontend - React + TypeScript
+```
+frontend/
+├── src/
+│   ├── App.tsx                 # Główny komponent aplikacji
+│   ├── index.tsx              # Entry point React
+│   ├── components/            # Komponenty React
+│   │   ├── Header.tsx         # Nagłówek z info o organizatorze
+│   │   ├── Navigation.tsx     # Nawigacja zakładkowa
+│   │   ├── CreateEventForm.tsx # Formularz tworzenia wydarzeń
+│   │   ├── EventCard.tsx      # Karta pojedynczego wydarzenia
+│   │   ├── OrganizerEvents.tsx # Lista wydarzeń organizatora
+│   │   ├── PublicEvents.tsx   # Katalog publicznych wydarzeń
+│   │   ├── SystemStats.tsx    # Statystyki systemu
+│   │   └── MessageDisplay.tsx # Wyświetlanie komunikatów
+│   ├── hooks/                 # React hooks
+│   │   ├── useOrganizer.ts    # Zarządzanie ID organizatora
+│   │   ├── useMessages.ts     # Komunikaty success/error
+│   │   └── useData.ts         # Hooks do ładowania danych
+│   ├── services/              # Warstwa komunikacji
+│   │   └── eventApi.ts        # API client dla REST endpoints
+│   └── types/                 # TypeScript typy
+│       └── index.ts           # Definicje typów aplikacji
+```
+
+### Backend - CQRS z SQLite
+
+Projekt implementuje wzorzec CQRS z pełną separacją danych:
+- **Commands** (Write Model) - operacje zmieniające stan w `events_command.db`
+- **Queries** (Read Model) - operacje odczytujące z `events_query.db`
+- **Automatyczna synchronizacja** między modelami po każdej operacji zapisu
 
 ### Struktura projektu
 
@@ -22,13 +50,29 @@ src/
 │   ├── commands.ts           # Definicje komend
 │   ├── queries.ts            # Definicje zapytań + DTOs
 │   ├── command-handlers.ts   # Obsługa komend
-│   └── query-handlers.ts     # Obsługa zapytań
+│   └── query-handlers.ts     # Obsługa zapytań (SQLite)
 ├── infrastructure/           # Warstwa infrastruktury
-│   ├── repositories.ts       # Mock implementacje repozytoriów
+│   ├── repositories.ts       # SQLite implementacje repozytoriów
 │   └── cqrs.ts              # Command/Query Bus + DI Container
+├── api/                      # Warstwa API
+│   └── rest-api.ts          # REST API endpoints
 ├── event-management.service.ts # Serwis wysokiego poziomu
-└── main.ts                   # Punkt wejścia aplikacji
+├── server.ts                 # HTTP server z Bun
+└── main.ts                   # Demonstracja z CLI
 ```
+
+### Bazy danych SQLite
+
+- **`events_command.db`** - Write Model (Command Side)
+  - Optymalizowana dla operacji zapisu
+  - Gwarantuje spójność transakcyjną
+  - Obsługuje komend (CREATE, UPDATE, PUBLISH)
+
+- **`events_query.db`** - Read Model (Query Side)  
+  - Zoptymalizowana dla szybkich zapytań
+  - Denormalizowana struktura danych
+  - Indeksy na często używanych polach
+  - Automatycznie synchronizowana z Write Model
 
 ## Implementowane scenariusze
 
@@ -60,48 +104,69 @@ src/
 
 ### Wymagania
 - Bun (najnowsza wersja)
-- Node.js (jako fallback)
 
 ### Instalacja i uruchomienie
 
 ```bash
-# Instalacja dependencies
+# Instalacja zależności  
 bun install
 
-# Uruchomienie w trybie deweloperskim
+# Uruchomienie serwera HTTP z frontendem (port 3001)
+bun run start
+# lub w trybie development z auto-reload
 bun run dev
 
-# Lub jednorazowe uruchomienie
-bun run start
+# Demonstracja CLI (bez frontendu)
+bun run demo
+
+# Czyszczenie baz danych SQLite
+bun run clean
 ```
+
+### Dostępne interfejsy
+
+1. **Frontend webowy:** http://localhost:3001
+2. **REST API:** http://localhost:3001/api  
+3. **Demonstracja CLI:** `bun run demo`
 
 ## Przykład użycia
 
 ```typescript
 import { EventManagementService } from './event-management.service';
-import { Container } from './infrastructure/cqrs';
 import { EventType, TicketType } from './domain/value-objects';
 
-const container = new Container();
-const eventService = new EventManagementService(container);
+// Serwis automatycznie inicjalizuje SQLite CQRS
+const eventService = new EventManagementService();
 
-// Tworzenie wydarzenia
+// Tworzenie wydarzenia (zapisywane do Command DB + sync do Query DB)
 const eventId = await eventService.createEvent({
-  organizerId: 'organizer-123',
+  organizerId: 'org-123',
   name: 'Konferencja IT 2025',
-  description: 'Największa konferencja technologiczna',
-  startDate: new Date('2025-09-15T09:00:00'),
-  endDate: new Date('2025-09-15T18:00:00'),
-  isOnline: true,
+  description: 'Najnowsze trendy w technologii i programowaniu',
+  startDate: new Date('2025-07-15T09:00:00'),
+  endDate: new Date('2025-07-15T17:00:00'),
+  address: 'Centrum Konferencyjne, ul. Technologiczna 5, Warszawa',
+  isOnline: false,
   eventType: EventType.PUBLIC,
-  ticketType: TicketType.FREE
+  ticketType: TicketType.PAID,
+  ticketPrice: 299,
+  currency: 'PLN'
 });
 
-// Publikacja wydarzenia
+// Publikacja wydarzenia (aktualizacja obu baz)
 await eventService.publishEvent(eventId);
 
-// Pobranie wydarzeń organizatora
-const events = await eventService.getOrganizerEvents('organizer-123');
+// Pobranie wydarzeń organizatora (z Query DB - zoptymalizowane)
+const events = await eventService.getOrganizerEvents('org-123');
+
+// Publiczne wydarzenia (z Read Model)
+const published = await eventService.getPublishedEvents();
+
+// Statystyki systemowe
+await eventService.showDatabaseStats();
+
+// Zamknięcie połączeń z bazami danych
+eventService.close();
 ```
 
 ## Walidacja danych
@@ -116,30 +181,52 @@ System automatycznie waliduje:
 
 ## Wzorce projektowe
 
-- **CQRS** - Separacja komend i zapytań
-- **Domain-Driven Design** - Agregaty, obiekty wartości, zdarzenia domenowe
-- **Repository Pattern** - Abstrakcja dostępu do danych
+- **CQRS** - Separacja komend i zapytań z dwoma bazami SQLite
+- **Domain-Driven Design** - Agregaty, obiekty wartości, zdarzenia domenowe  
+- **Repository Pattern** - Abstrakcja dostępu do danych (Command/Query separation)
 - **Command Pattern** - Enkapsulacja operacji jako obiekty
-- **Dependency Injection** - Odwrócenie zależności
+- **Dependency Injection** - Odwrócenie zależności przez Container
 
-## Rozszerzalność
+## Technologie
 
-Architektura umożliwia łatwe dodanie:
-- Nowych komend i zapytań
-- Obsługi zdarzeń domenowych (Event Sourcing)
-- Różnych implementacji repozytoriów (baza danych)
-- Warstwy prezentacji (REST API, GraphQL)
-- Aplikacji mobilnej (wspólna logika biznesowa)
+- **Runtime:** Bun (natywna obsługa SQLite, HTTP server)
+- **Frontend:** React 18 + TypeScript (komponenty, hooks, services)
+- **Język:** TypeScript (bezpieczeństwo typów)
+- **Baza danych:** SQLite (dual database CQRS)
+- **Architektura:** Layered + CQRS + DDD + Component-based UI
+
+## React Frontend - Struktura komponentów
+
+### Główne komponenty:
+- **App.tsx** - Główny komponent z zarządzaniem stanu
+- **Header.tsx** - Nagłówek z informacjami o organizatorze
+- **Navigation.tsx** - Zakładki nawigacyjne
+- **CreateEventForm.tsx** - Formularz tworzenia wydarzeń z walidacją
+- **EventCard.tsx** - Karta pojedynczego wydarzenia
+- **OrganizerEvents.tsx** - Lista wydarzeń z opcjami zarządzania
+- **PublicEvents.tsx** - Publiczny katalog wydarzeń
+- **SystemStats.tsx** - Statystyki systemu CQRS
+- **MessageDisplay.tsx** - System powiadomień
+
+### Custom hooks:
+- **useOrganizer()** - Zarządzanie ID organizatora w localStorage
+- **useMessages()** - Komunikaty success/error z auto-hide
+- **useData()** - Hooks do ładowania danych (events, stats)
 
 ## Status projektu
 
-🚧 **Prototyp** - Implementuje podstawowe scenariusze z mock danymi
-- ✅ Tworzenie wydarzeń
-- ✅ Modyfikacja wydarzeń  
-- ✅ Publikacja wydarzeń
-- ✅ Panel zarządzania organizatora
-- ✅ Katalog publicznych wydarzeń
-- ✅ Walidacja danych
-- ⏳ Integracja z bazą danych (planowane)
-- ⏳ REST API (planowane)
-- ⏳ Aplikacja mobilna (planowane)
+✅ **Wdrożony** - Pełnofunkcjonalny system React + SQLite CQRS
+- ✅ React frontend z TypeScript
+- ✅ Komponenty z separacją odpowiedzialności
+- ✅ Custom hooks do zarządzania stanem
+- ✅ Tworzenie wydarzeń (Command Model)
+- ✅ Modyfikacja wydarzeń (Command → Query sync)
+- ✅ Publikacja wydarzeń (dual database update)
+- ✅ Panel zarządzania organizatora (Read Model)
+- ✅ Katalog publicznych wydarzeń (optimized queries)
+- ✅ Walidacja danych biznesowych
+- ✅ REST API z pełnym CRUD
+- ✅ Responsywny UI z modern design
+- ✅ Automatyczna synchronizacja Write → Read Model
+- ✅ SQLite database per CQRS side
+- ✅ Graceful shutdown i cleanup zasobów

@@ -1,6 +1,6 @@
 import { handleRequest, cleanup } from './api/rest-api';
 
-const port = 3001;
+const port = 3000;
 
 console.log('🚀 Starting Event Management System with SQLite CQRS...');
 console.log(`📊 Architecture: CQRS with dual SQLite databases`);
@@ -16,9 +16,11 @@ async function serveStatic(pathname: string): Promise<Response | null> {
   const cleanPath = pathname === '/' ? '/index.html' : pathname;
   
   let filePath: string;
-  
-  if (cleanPath.startsWith('/static/')) {
+    if (cleanPath.startsWith('/static/')) {
     // Serve files from public/static/
+    filePath = `./public${cleanPath}`;
+  } else if (cleanPath.startsWith('/dist/')) {
+    // Serve React build files from public/dist/
     filePath = `./public${cleanPath}`;
   } else if (cleanPath === '/index.html' || cleanPath === '/') {
     // Serve index.html for root
