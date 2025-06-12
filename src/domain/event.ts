@@ -3,9 +3,11 @@ import { EventId, OrganizerId, EventType, TicketType, Money, Location } from './
 // Domain Events
 export abstract class DomainEvent {
   public readonly occurredOn: Date;
+  public readonly eventType: string; // Nazwa typu eventu
   
   constructor() {
     this.occurredOn = new Date();
+    this.eventType = this.constructor.name;
   }
 }
 
@@ -21,6 +23,46 @@ export class EventCreated extends DomainEvent {
     public readonly eventType: EventType,
     public readonly ticketType: TicketType,
     public readonly ticketPrice?: Money
+  ) {
+    super();
+  }
+}
+
+export class EventUpdated extends DomainEvent {
+  constructor(
+    public readonly eventId: EventId,
+    public readonly organizerId: OrganizerId,
+    public readonly changes: {
+      name?: string;
+      description?: string;
+      startDate?: Date;
+      endDate?: Date;
+      location?: Location;
+      eventType?: EventType;
+      ticketType?: TicketType;
+      ticketPrice?: Money;
+    }
+  ) {
+    super();
+  }
+}
+
+export class EventPublished extends DomainEvent {
+  constructor(
+    public readonly eventId: EventId,
+    public readonly organizerId: OrganizerId,
+    public readonly publishedAt: Date = new Date()
+  ) {
+    super();
+  }
+}
+
+export class EventCancelled extends DomainEvent {
+  constructor(
+    public readonly eventId: EventId,
+    public readonly organizerId: OrganizerId,
+    public readonly reason: string,
+    public readonly cancelledAt: Date = new Date()
   ) {
     super();
   }
@@ -119,7 +161,6 @@ export class Event {
       throw new Error('Free events cannot have a ticket price');
     }
   }
-
   update(
     name: string,
     description: string,
@@ -132,6 +173,18 @@ export class Event {
   ): void {
     Event.validateEventData(name, description, startDate, endDate, ticketType, ticketPrice);
     
+    // Zbierz zmiany
+    const changes: any = {};
+    if (this.name !== name) changes.name = name;
+    if (this.description !== description) changes.description = description;
+    if (this.startDate.getTime() !== startDate.getTime()) changes.startDate = startDate;
+    if (this.endDate.getTime() !== endDate.getTime()) changes.endDate = endDate;
+    if (this.location !== location) changes.location = location;
+    if (this.eventType !== eventType) changes.eventType = eventType;
+    if (this.ticketType !== ticketType) changes.ticketType = ticketType;
+    if (this.ticketPrice !== ticketPrice) changes.ticketPrice = ticketPrice;
+    
+    // Aktualizuj dane
     this.name = name;
     this.description = description;
     this.startDate = startDate;
@@ -140,10 +193,24 @@ export class Event {
     this.eventType = eventType;
     this.ticketType = ticketType;
     this.ticketPrice = ticketPrice;
+    
+    // Opublikuj event tylko jeśli były zmiany
+    if (Object.keys(changes).length > 0) {
+      this.addDomainEvent(new EventUpdated(this.id, this.organizerId, changes));
+    }
+  }
+  publish(): void {
+    if (!this.isPublished) {
+      this.isPublished = true;
+      this.addDomainEvent(new EventPublished(this.id, this.organizerId));
+    }
   }
 
-  publish(): void {
-    this.isPublished = true;
+  cancel(reason: string): void {
+    if (this.isPublished) {
+      this.isPublished = false;
+      this.addDomainEvent(new EventCancelled(this.id, this.organizerId, reason));
+    }
   }
 
   private addDomainEvent(event: DomainEvent): void {
