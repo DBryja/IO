@@ -26,6 +26,35 @@ export function EditEventModal({ eventId, isOpen, onClose, onMessage, onSuccess 
     currency: 'PLN'
   });
 
+  // Get storage key for this specific event
+  const getStorageKey = () => eventId ? `editEventFormData_${eventId}` : null;
+
+  // Save form data to localStorage whenever it changes (but only if event is loaded)
+  useEffect(() => {
+    if (event && eventId) {
+      try {
+        const storageKey = getStorageKey();
+        if (storageKey) {
+          localStorage.setItem(storageKey, JSON.stringify(formData));
+        }
+      } catch (error) {
+        console.warn('Failed to save form data:', error);
+      }
+    }
+  }, [formData, event, eventId]);
+
+  // Clear saved data when modal closes successfully
+  const clearSavedData = () => {
+    try {
+      const storageKey = getStorageKey();
+      if (storageKey) {
+        localStorage.removeItem(storageKey);
+      }
+    } catch (error) {
+      console.warn('Failed to clear saved form data:', error);
+    }
+  };
+
   // Load event data when modal opens
   useEffect(() => {
     if (isOpen && eventId) {
@@ -47,18 +76,35 @@ export function EditEventModal({ eventId, isOpen, onClose, onMessage, onSuccess 
         const startDate = new Date(eventData.startDate);
         const endDate = new Date(eventData.endDate);
         
-        setFormData({
+        const defaultFormData = {
           name: eventData.name,
           description: eventData.description,
           startDate: formatDateForInput(startDate),
           endDate: formatDateForInput(endDate),
-          locationType: eventData.location?.isOnline || eventData.isOnline ? 'online' : 'offline',
+          locationType: (eventData.location?.isOnline || eventData.isOnline ? 'online' : 'offline') as 'online' | 'offline',
           address: eventData.location?.address || eventData.address || '',
           eventType: eventData.eventType,
           ticketType: eventData.ticketType,
           ticketPrice: eventData.ticketPrice?.amount?.toString() || '',
           currency: eventData.ticketPrice?.currency || 'PLN'
-        });
+        };
+
+        // Check if there's saved form data for this event
+        try {
+          const storageKey = getStorageKey();
+          const savedData = storageKey ? localStorage.getItem(storageKey) : null;
+          if (savedData) {
+            const parsedData = JSON.parse(savedData);
+            // Use saved data if it exists, otherwise use default
+            setFormData({ ...defaultFormData, ...parsedData });
+            onMessage('📋 Przywrócono niezapisane zmiany z poprzedniej sesji', 'info');
+          } else {
+            setFormData(defaultFormData);
+          }
+        } catch (error) {
+          console.warn('Failed to load saved form data:', error);
+          setFormData(defaultFormData);
+        }
       } else {
         onMessage(`❌ Błąd: ${response.error}`, 'error');
         onClose();
@@ -69,6 +115,31 @@ export function EditEventModal({ eventId, isOpen, onClose, onMessage, onSuccess 
     } finally {
       setLoading(false);
     }
+  };
+
+  // Reset form to original event data
+  const resetToOriginal = () => {
+    if (!event) return;
+    
+    const startDate = new Date(event.startDate);
+    const endDate = new Date(event.endDate);
+    
+    const originalFormData = {
+      name: event.name,
+      description: event.description,
+      startDate: formatDateForInput(startDate),
+      endDate: formatDateForInput(endDate),
+      locationType: (event.location?.isOnline || event.isOnline ? 'online' : 'offline') as 'online' | 'offline',
+      address: event.location?.address || event.address || '',
+      eventType: event.eventType,
+      ticketType: event.ticketType,
+      ticketPrice: event.ticketPrice?.amount?.toString() || '',
+      currency: event.ticketPrice?.currency || 'PLN'
+    };
+    
+    setFormData(originalFormData);
+    clearSavedData();
+    onMessage('🔄 Przywrócono oryginalne dane wydarzenia', 'info');
   };
 
   const formatDateForInput = (date: Date): string => {
@@ -109,13 +180,16 @@ export function EditEventModal({ eventId, isOpen, onClose, onMessage, onSuccess 
 
       if (response.success) {
         onMessage('✅ Wydarzenie zostało zaktualizowane!', 'success');
+        clearSavedData(); // Clear saved form data on successful update
         onSuccess();
         onClose();
       } else {
         onMessage(`❌ Błąd: ${response.error}`, 'error');
+        // Form data is preserved on error
       }
     } catch (error) {
       onMessage(`❌ Błąd aktualizacji: ${error}`, 'error');
+      // Form data is preserved on error
     }
   };
 
@@ -287,6 +361,14 @@ export function EditEventModal({ eventId, isOpen, onClose, onMessage, onSuccess 
               <div className="form-actions">
                 <button type="submit" className="btn btn-primary">
                   <i className="fas fa-save"></i> Zapisz zmiany
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={resetToOriginal}
+                  title="Przywróć oryginalne wartości"
+                >
+                  <i className="fas fa-undo"></i> Przywróć oryginalne
                 </button>
                 <button type="button" className="btn btn-secondary" onClick={onClose}>
                   <i className="fas fa-times"></i> Anuluj

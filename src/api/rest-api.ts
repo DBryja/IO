@@ -57,26 +57,34 @@ export async function handleRequest(request: Request): Promise<Response> {
         return jsonResponse({ success: false, error: 'Missing required fields' }, 400);
       }
 
-      const eventId = await eventService.createEvent({
-        organizerId,
-        name,
-        description,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        address,
-        isOnline: isOnline || false,
-        eventType: eventType || EventType.PUBLIC,
-        ticketType: ticketType || TicketType.FREE,
-        ticketPrice,
-        currency: currency || 'PLN'
-      });      
-      
-      return jsonResponse({ 
-        success: true,
-        eventId, 
-        message: 'Event created successfully',
-        database: 'SQLite CQRS (Command + Query separation)'
-      }, 201);
+      try {
+        const eventId = await eventService.createEvent({
+          organizerId,
+          name,
+          description,
+          startDate: new Date(startDate),
+          endDate: new Date(endDate),
+          address,
+          isOnline: isOnline || false,
+          eventType: eventType || EventType.PUBLIC,
+          ticketType: ticketType || TicketType.FREE,
+          ticketPrice,
+          currency: currency || 'PLN'
+        });      
+        
+        return jsonResponse({ 
+          success: true,
+          eventId, 
+          message: 'Event created successfully',
+          database: 'SQLite CQRS (Command + Query separation)'
+        }, 201);
+      } catch (error) {
+        console.error('❌ Błąd podczas tworzenia wydarzenia:', error instanceof Error ? error.message : error);
+        return jsonResponse({ 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        }, 400);
+      }
     } else if (pathname === '/api/events/published' && method === 'GET') {
       // Get published events (from read model)
       const events = await eventService.getPublishedEvents();
@@ -144,23 +152,33 @@ export async function handleRequest(request: Request): Promise<Response> {
         return jsonResponse({ success: false, error: 'Missing required fields' }, 400);
       }
 
-      await eventService.updateEvent(eventId, {
-        name,
-        description,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        address,
-        isOnline: isOnline || false,
-        eventType: eventType || EventType.PUBLIC,
-        ticketType: ticketType || TicketType.FREE,
-        ticketPrice,
-        currency: currency || 'PLN'
-      });      return jsonResponse({ 
-        success: true,
-        message: 'Event updated successfully',
-        eventId,
-        action: 'Synchronized to Read Model'
-      });    } else if (pathname === '/api/stats' && method === 'GET') {
+      try {
+        await eventService.updateEvent(eventId, {
+          name,
+          description,
+          startDate: new Date(startDate),
+          endDate: new Date(endDate),
+          address,
+          isOnline: isOnline || false,
+          eventType: eventType || EventType.PUBLIC,
+          ticketType: ticketType || TicketType.FREE,
+          ticketPrice,
+          currency: currency || 'PLN'
+        });      
+
+        return jsonResponse({ 
+          success: true,
+          message: 'Event updated successfully',
+          eventId,
+          action: 'Synchronized to Read Model'
+        });
+      } catch (error) {
+        console.error('❌ Błąd podczas aktualizacji wydarzenia:', error instanceof Error ? error.message : error);
+        return jsonResponse({ 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        }, 400);
+      }    } else if (pathname === '/api/stats' && method === 'GET') {
       // Database statistics - get real data from databases
       await eventService.showDatabaseStats();
         // Get actual statistics from the databases

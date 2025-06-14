@@ -19,7 +19,7 @@ export function App() {
 
   console.log('🎯 App component rendering, organizerId:', organizerId);
 
-  const handleCreateEvent = async (eventData: any) => {
+  const handleCreateEvent = async (eventData: any): Promise<boolean> => {
     setIsLoading(true);
     try {
       showMessage('Tworzenie wydarzenia...', 'info');
@@ -30,11 +30,14 @@ export function App() {
         showMessage('✅ Wydarzenie zostało utworzone pomyślnie!', 'success');
         // Switch to management tab to show the new event
         setActiveTab('manage');
+        return true;
       } else {
         showMessage(`❌ Błąd: ${response.error}`, 'error');
+        return false;
       }
     } catch (error) {
       showMessage(`❌ Błąd sieci: ${error}`, 'error');
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -51,6 +54,7 @@ export function App() {
               organizerId={organizerId}
               onSubmit={handleCreateEvent}
               isLoading={isLoading}
+              onMessage={showMessage}
             />
           );
         case 'manage':
