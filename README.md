@@ -111,7 +111,7 @@ src/
 # Instalacja zależności  
 bun install
 
-# Uruchomienie serwera HTTP z frontendem (port 3001)
+# Uruchomienie serwera HTTP z frontendem (port 3000)
 bun run start
 # lub w trybie development z auto-reload
 bun run dev
@@ -125,8 +125,8 @@ bun run clean
 
 ### Dostępne interfejsy
 
-1. **Frontend webowy:** http://localhost:3001
-2. **REST API:** http://localhost:3001/api  
+1. **Frontend webowy:** http://localhost:3000
+2. **REST API:** http://localhost:3000/api  
 3. **Demonstracja CLI:** `bun run demo`
 
 ## Przykład użycia
